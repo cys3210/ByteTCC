@@ -154,21 +154,29 @@ public class CompensableManagerImpl implements CompensableManager, CompensableBe
 
 	protected void invokeBegin(TransactionContext transactionContext, boolean createFlag)
 			throws NotSupportedException, SystemException {
+		// jta 事务协助者
 		RemoteCoordinator transactionCoordinator = this.beanFactory.getTransactionCoordinator();
 
 		CompensableTransaction compensable = this.getCompensableTransactionQuietly();
 		TransactionContext compensableContext = compensable.getTransactionContext();
 
+		// tcc 事务id
 		TransactionXid compensableXid = compensableContext.getXid();
+		// jta 事务id
 		TransactionXid transactionXid = transactionContext.getXid();
 		try {
+			// 开始 jta 本地事务(创建一个 2PC 机制的事务)
+			// bytejta 是基于 XA/2PC 机制的事务管理器, 此处基于 bytejta 管理本地事务
 			Transaction transaction = transactionCoordinator.start(transactionContext, XAResource.TMNOFLAGS);
 			transaction.setTransactionalExtra(compensable);
 			compensable.setTransactionalExtra(transaction);
 
+			// 将 tcc 事务注册到 jta 事务中
+			// 此时 jta 事务在进行 prepare, commit ,rollback 等操作时都会通知 tcc 全局事务
 			transaction.registerTransactionResourceListener(compensable);
 			transaction.registerTransactionListener(compensable);
 
+			// 本地事务 - 分支事务 同步
 			CompensableSynchronization synchronization = this.beanFactory.getCompensableSynchronization();
 			synchronization.afterBegin(compensable.getTransaction(), createFlag);
 		} catch (XAException tex) {
@@ -202,37 +210,62 @@ public class CompensableManagerImpl implements CompensableManager, CompensableBe
 		}
 	}
 
+	// 开始 tcc 全局事务
 	public void compensableBegin() throws NotSupportedException, SystemException {
+		// 不支持同一个线程同时开启两个 tcc 全局事务
 		if (this.getCompensableTransactionQuietly() != null) {
 			throw new NotSupportedException();
 		}
 
+		// 日志管理模块 负责事务日志的存储及读取
 		CompensableLogger compensableLogger = this.beanFactory.getCompensableLogger();
+
+		// 分布式事务锁 好像0.4版本没有实现，默认返回true
 		TransactionLock compensableLock = this.beanFactory.getCompensableLock();
+
+		// TransactionRepositoryImpl 其实就是 xid - transaction 的map
 		TransactionRepository compensableRepository = this.beanFactory.getCompensableRepository();
+
+		// org.bytesoft.bytetcc.CompensableCoordinator
+		// 分布式事务协调者，实现 TransactionParticipant 接口。
+		// 由 RPC 自定义的拦截器(客户端)调度， 提供远程事务分支管理的接入入口
 		RemoteCoordinator compensableCoordinator = this.beanFactory.getCompensableCoordinator();
 
+		// org.bytesoft.bytejta.xa.XidFactoryImpl
 		XidFactory transactionXidFactory = this.beanFactory.getTransactionXidFactory();
+		// org.bytesoft.bytetcc.xa.XidFactoryImpl
 		XidFactory compensableXidFactory = this.beanFactory.getCompensableXidFactory();
 
+		// 以下两个id, 一个代表全局事务id compensableXid, 一个代表本地事务id transactionXid
+		// XidFactory.TCC_FORMAT_ID 8127 + 唯一 id
 		TransactionXid compensableXid = compensableXidFactory.createGlobalXid();
+		// XidFactory.JTA_FORMAT_ID 1207 + 唯一 id
 		TransactionXid transactionXid = transactionXidFactory.createGlobalXid(compensableXid.getGlobalTransactionId());
 
+		// TCC 全局事务上下文
 		TransactionContext compensableContext = new TransactionContext();
 		compensableContext.setCoordinator(true);
 		compensableContext.setCompensable(true);
 		compensableContext.setXid(compensableXid);
 		compensableContext.setPropagatedBy(compensableCoordinator.getIdentifier());
+
+		// 负责全局事务相关的处理逻辑， 实现 TransactionListener 接口，
+		// 在 ByteJTA 本地事务 commit/rollback 时会收到相应的通知及
+		// 获得当前线程的 TCC事务， 不支持一个线程同时开启多个 TCC事务
+		// 创建一个 tcc 全局事务
 		CompensableTransactionImpl compensable = new CompensableTransactionImpl(compensableContext);
 		compensable.setBeanFactory(this.beanFactory);
 
+		// 将 tcc 全局事务和当前线程绑定
 		this.associateThread(compensable);
 
+		// 本地事务上下文
 		TransactionContext transactionContext = new TransactionContext();
 		transactionContext.setXid(transactionXid);
 
 		boolean failure = true;
 		try {
+			// 开始本地事务， 同步分支事务
 			this.invokeBegin(transactionContext, true);
 			failure = false;
 		} finally {
@@ -241,9 +274,11 @@ public class CompensableManagerImpl implements CompensableManager, CompensableBe
 			}
 		}
 
+		// xid - 全局事务
 		compensableRepository.putTransaction(compensableXid, compensable);
-
+		// 记录事务日志
 		compensableLogger.createTransaction(compensable.getTransactionArchive());
+		// 0.4版本 默认返回 true
 		boolean locked = compensableLock.lockTransaction(compensableXid, this.endpoint);
 		if (locked == false) {
 			this.invokeRollbackInBegin(transactionContext);

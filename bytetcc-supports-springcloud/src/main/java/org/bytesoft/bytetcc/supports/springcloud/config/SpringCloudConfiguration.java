@@ -56,6 +56,10 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
+/**
+ * spring cloud 的配置类，依靠 spring 的后处理 BeanPostProcess
+ * 对默认的 spring cloud 的默认组件进行替换
+ */
 @PropertySource(value = "bytetcc:loadbalancer.config", factory = CompensablePropertySourceFactory.class)
 @Configuration
 public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements BeanFactoryPostProcessor, InitializingBean,
@@ -76,12 +80,20 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		this.identifier = String.format("%s:%s:%s", host, name, port);
 	}
 
+	/**
+	 * 不启用 hystrix， 使用 CompensableFeignBeanPostProcessor
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean
 	@ConditionalOnProperty(name = "feign.hystrix.enabled", havingValue = "false", matchIfMissing = true)
 	public CompensableFeignBeanPostProcessor feignPostProcessor() {
 		return new CompensableFeignBeanPostProcessor();
 	}
 
+	/**
+	 * 启用 hystrix, 使用 CompensableHystrixBeanPostProcessor
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean
 	@ConditionalOnProperty(name = "feign.hystrix.enabled")
 	@ConditionalOnClass(feign.hystrix.HystrixFeign.class)
@@ -89,6 +101,10 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return new CompensableHystrixBeanPostProcessor();
 	}
 
+	/**
+	 * feign 拦截器， 用于设置一些请求头信息
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean
 	public CompensableFeignInterceptor compensableFeignInterceptor() {
 		CompensableFeignInterceptor interceptor = new CompensableFeignInterceptor();
@@ -96,12 +112,23 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return interceptor;
 	}
 
+	/**
+	 * bytecc 自定义 feign contract
+	 * @return
+	 */
 	@org.springframework.context.annotation.Primary
 	@org.springframework.context.annotation.Bean
 	public feign.Contract compensableFeignContract() {
 		return new CompensableFeignContract();
 	}
 
+	/**
+	 * bytetcc 自定义 feign 解码器
+	 * 一般用来解析 response header 里面的 transaction key, propagation key
+	 * 从而得到正确的 transaction context, remote coordinator
+	 * @param objectFactory
+	 * @return
+	 */
 	@org.springframework.context.annotation.Primary
 	@org.springframework.context.annotation.Bean
 	public feign.codec.Decoder compensableFeignDecoder(@Autowired ObjectFactory<HttpMessageConverters> objectFactory) {
@@ -110,12 +137,23 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return feignDecoder;
 	}
 
+	/**
+	 * bytetcc 自定义 feign error 解码器
+	 * 一般用来解析 response header 里面的 transaction key, propagation key
+	 * 从而得到正确的 transaction context, remote coordinator
+	 * @return
+	 */
 	@org.springframework.context.annotation.Primary
 	@org.springframework.context.annotation.Bean
 	public feign.codec.ErrorDecoder compensableErrorDecoder() {
 		return new CompensableFeignErrorDecoder();
 	}
 
+	/**
+	 * spring web 请求拦截器
+	 * 可拦截在请求前后或在请求完成后进行处理
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean
 	public CompensableHandlerInterceptor compensableHandlerInterceptor() {
 		CompensableHandlerInterceptor interceptor = new CompensableHandlerInterceptor();
@@ -123,6 +161,11 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return interceptor;
 	}
 
+	/**
+	 * 对于一些没有使用 feign, hystrix 的请求进行拦截的拦截器
+	 * 在 {@link SpringCloudConfiguration#defaultRestTemplate(CompensableRequestInterceptor)} 中使用
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean
 	public CompensableRequestInterceptor compensableRequestInterceptor() {
 		CompensableRequestInterceptor interceptor = new CompensableRequestInterceptor();
@@ -130,12 +173,21 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return interceptor;
 	}
 
+	/**
+	 * 默认使用， netty 客户端进行发送
+	 * @return
+	 */
 	@org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(ClientHttpRequestFactory.class)
 	@org.springframework.context.annotation.Bean
 	public ClientHttpRequestFactory defaultRequestFactory() {
 		return new org.springframework.http.client.Netty4ClientHttpRequestFactory();
 	}
 
+	/**
+	 * bytetcc 发送请求组件, compensableRestTemplate 专用
+	 * @param requestFactory
+	 * @return
+	 */
 	@org.springframework.context.annotation.Bean("compensableRestTemplate")
 	public RestTemplate transactionTemplate(@Autowired ClientHttpRequestFactory requestFactory) {
 		RestTemplate restTemplate = new RestTemplate();
@@ -147,6 +199,11 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		return restTemplate;
 	}
 
+	/**
+	 * 默认的请求发送组件
+	 * @param compensableRequestInterceptor
+	 * @return
+	 */
 	@org.springframework.context.annotation.Primary
 	@org.springframework.cloud.client.loadbalancer.LoadBalanced
 	@org.springframework.context.annotation.Bean
@@ -162,6 +219,11 @@ public class SpringCloudConfiguration extends WebMvcConfigurerAdapter implements
 		registry.addInterceptor(compensableHandlerInterceptor);
 	}
 
+	/**
+	 * spring 对 bean 的后处理工厂， 支持在初始化之前修改所有的 Bean Definition
+	 * @param beanFactory
+	 * @throws BeansException
+	 */
 	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
 
 		String[] beanNameArray = beanFactory.getBeanDefinitionNames();

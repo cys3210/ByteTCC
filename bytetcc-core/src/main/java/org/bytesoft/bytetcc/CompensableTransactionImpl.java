@@ -681,11 +681,13 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 			throw new IllegalStateException();
 		}
 
+		// 全局事务日志组件
 		CompensableLogger compensableLogger = this.beanFactory.getCompensableLogger();
 		if (RemoteResourceDescriptor.class.isInstance(xaRes) == false) {
 			throw new SystemException("Invalid resource!");
 		}
 
+		// 获得分支事务协助组件描述器
 		RemoteResourceDescriptor descriptor = (RemoteResourceDescriptor) xaRes;
 
 		XidFactory xidFactory = this.beanFactory.getCompensableXidFactory();
@@ -693,6 +695,9 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 		TransactionXid branchXid = xidFactory.createBranchXid(globalXid);
 
 		try {
+			// 分支事务协助组件 start
+			// 实际上是 SpringCloudCoordinator 的一个代理对象, SpringCloudCoordinator.invoke()
+			// 此处的 start 方法不做任何处理。
 			descriptor.start(branchXid, XAResource.TMNOFLAGS);
 		} catch (XAException ex) {
 			throw new RollbackException(); // should never happen
@@ -711,6 +716,7 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 			return false;
 		} // end-if (resourceValid == false)
 
+		// 保存分支事务相关资源，并创建日志
 		XAResourceArchive resourceArchive = this.resourceMap.get(identifier);
 		if (resourceArchive == null) {
 			resourceArchive = new XAResourceArchive();
@@ -778,25 +784,33 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 	}
 
 	public synchronized void registerCompensable(CompensableInvocation invocation) {
+		// bytejtaXidFactory
 		XidFactory transactionXidFactory = this.beanFactory.getTransactionXidFactory();
+		// 日志管理组件
 		CompensableLogger compensableLogger = this.beanFactory.getCompensableLogger();
 
+		// jta 本地事务
 		Transaction transaction = (Transaction) this.getTransactionalExtra();
 		org.bytesoft.transaction.TransactionContext transactionContext = transaction.getTransactionContext();
+		// jta 事务id
 		TransactionXid transactionXid = transactionContext.getXid();
 
+		// 设置当前 invocation 注册状态, 避免重复注册
 		invocation.setEnlisted(true);
 
+		// 生成分支事务id
 		CompensableArchive compensableArchive = new CompensableArchive();
 		TransactionXid globalXid = transactionXidFactory
 				.createGlobalXid(this.transactionContext.getXid().getGlobalTransactionId());
 		TransactionXid branchXid = transactionXidFactory.createBranchXid(globalXid);
 		compensableArchive.setIdentifier(branchXid);
 
+		// 设置 invocation 到事务归档器中
 		compensableArchive.setCompensable(invocation);
 
 		this.archiveList.add(compensableArchive);
 
+		// 加到 xidToArchivesMap
 		List<CompensableArchive> archiveList = this.xidToArchivesMap.get(transactionXid);
 		if (archiveList == null) {
 			archiveList = new ArrayList<CompensableArchive>();

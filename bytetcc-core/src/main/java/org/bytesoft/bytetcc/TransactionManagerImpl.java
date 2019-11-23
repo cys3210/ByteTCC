@@ -41,25 +41,46 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 	@javax.inject.Inject
 	private CompensableBeanFactory beanFactory;
 
+	// 开始全局事务
 	public void begin() throws NotSupportedException, SystemException {
 		TransactionManager transactionManager = this.beanFactory.getTransactionManager();
+
+		// CompensableManagerImpl
+		// TCC全局事务管理器, 实现 JTA 规范的 TransactionManager 供 spring 容器直接调用,
+		// 负责 spring 容器声明式事务中的 commit,rollback,suspend,resume 等管理操作
 		CompensableManager compensableManager = this.beanFactory.getCompensableManager();
 
+		// 负责全局事务相关的处理逻辑， 实现 TransactionListener 接口，
+		// 在 ByteJTA 本地事务 commit/rollback 时会收到相应的通知及
+		// 获得当前线程的 TCC事务， 不支持一个线程同时开启多个 TCC事务
 		CompensableTransaction transaction = compensableManager.getCompensableTransactionQuietly();
 
+		// 所有开始调用 tcc 事务相关方法的 invocation的注册表
 		CompensableInvocationRegistry registry = CompensableInvocationRegistry.getInstance();
 		CompensableInvocation invocation = registry.getCurrent();
 
+		// 若当前已经开始了 tcc 全局事务
 		if (transaction != null) {
 			compensableManager.begin();
+
+		// 开始创建一个 tcc 全局事务
+		// CompensableMethodInterceptor invoke, 在 tcc 事务开始之前, 拦截器拦截到被执行的方法, 开始第一次 tcc 全局事务
+		// <bean id="compensableMethodInterceptor" class="org.bytesoft.bytetcc.supports.spring.CompensableMethodInterceptor" />
+		// <aop:config proxy-target-class="true">
+		// 	<aop:pointcut id="compensableMethodPointcut" expression="@within(org.bytesoft.compensable.Compensable)" />
+		//  <aop:advisor advice-ref="compensableMethodInterceptor" pointcut-ref="compensableMethodPointcut" />
+		// </aop:config>
+		// aop会拦截所有标注有 compensable 注解的对象， 对于他们执行的方法都会进行拦截， 推测 invocation 主要是为了 tcc 事务的上下文
 		} else if (invocation != null) {
 			compensableManager.compensableBegin();
+
 		} else {
 			transactionManager.begin();
 		}
 
 	}
 
+	// 提交全局事务
 	public void commit() throws RollbackException, HeuristicMixedException, HeuristicRollbackException, SecurityException,
 			IllegalStateException, SystemException {
 		TransactionManager transactionManager = this.beanFactory.getTransactionManager();
@@ -77,19 +98,20 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 			transactionContext = compensable.getTransactionContext();
 		}
 
+		// 判断当前事务是否为 tcc 全局事务
 		if (org.bytesoft.compensable.TransactionContext.class.isInstance(transactionContext)) {
 			org.bytesoft.compensable.TransactionContext compensableContext = //
 					(org.bytesoft.compensable.TransactionContext) transactionContext;
-			if (compensableContext.isRecoveried()) {
+			if (compensableContext.isRecoveried()) {					// 恢复事务
 				if (compensableContext.isCompensable() == false) {
 					throw new IllegalStateException();
 				}
 				compensableManager.commit();
-			} else if (compensableContext.isCompensable() == false) {
+			} else if (compensableContext.isCompensable() == false) {	// 不是全局事务
 				transactionManager.commit();
-			} else if (compensableContext.isCompensating()) {
+			} else if (compensableContext.isCompensating()) {			// 正在补偿中的全局事务
 				compensableManager.commit();
-			} else if (transactionContext.isCoordinator()) {
+			} else if (transactionContext.isCoordinator()) {			// 本地事务已经开始了
 				if (transactionContext.isPropagated()) {
 					compensableManager.commit();
 				} else if (compensableContext.getPropagationLevel() > 0) {
@@ -106,6 +128,7 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 
 	}
 
+	// 回滚全局事务
 	public void rollback() throws IllegalStateException, SecurityException, SystemException {
 		TransactionManager transactionManager = this.beanFactory.getTransactionManager();
 		CompensableManager compensableManager = this.beanFactory.getCompensableManager();

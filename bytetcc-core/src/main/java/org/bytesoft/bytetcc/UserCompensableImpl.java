@@ -54,10 +54,11 @@ public class UserCompensableImpl implements UserCompensable, Referenceable, Seri
 
 	public TransactionXid compensableBegin() throws NotSupportedException, SystemException {
 		RemoteCoordinator compensableCoordinator = this.beanFactory.getCompensableCoordinator();
+
 		CompensableManager tompensableManager = this.beanFactory.getCompensableManager();
+
 		XidFactory compensableXidFactory = this.beanFactory.getCompensableXidFactory();
 
-		TransactionContext compensableContext = new TransactionContext();
 		CompensableTransactionImpl compensable = (CompensableTransactionImpl) tompensableManager
 				.getCompensableTransactionQuietly();
 		if (compensable != null) {
@@ -65,11 +66,14 @@ public class UserCompensableImpl implements UserCompensable, Referenceable, Seri
 		}
 
 		TransactionXid compensableXid = compensableXidFactory.createGlobalXid();
+
+		TransactionContext compensableContext = new TransactionContext();
 		compensableContext.setCoordinator(true);
 		compensableContext.setPropagated(true);
 		compensableContext.setCompensable(true);
 		compensableContext.setXid(compensableXid);
 		compensableContext.setPropagatedBy(compensableCoordinator.getIdentifier());
+
 		compensable = new CompensableTransactionImpl(compensableContext);
 		compensable.setBeanFactory(this.beanFactory);
 
@@ -82,6 +86,7 @@ public class UserCompensableImpl implements UserCompensable, Referenceable, Seri
 
 		return compensableXid;
 	}
+
 
 	public void begin() throws NotSupportedException, SystemException {
 		this.transactionManager.begin();

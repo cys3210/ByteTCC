@@ -60,6 +60,7 @@ public final class SpringCloudBeanRegistry implements CompensableBeanFactoryAwar
 			return coordinator;
 		}
 
+		// 默认使用 SpringCloudCoordinator 作为分支事务协助者
 		SpringCloudCoordinator handler = new SpringCloudCoordinator();
 		handler.setIdentifier(identifier);
 		handler.setEnvironment(this.environment);

@@ -26,6 +26,9 @@ import org.springframework.context.ApplicationContextAware;
 
 import feign.MethodMetadata;
 
+/**
+ * bytetcc 自定义 feign contract
+ */
 public class CompensableFeignContract implements feign.Contract, InitializingBean, ApplicationContextAware {
 	private ApplicationContext applicationContext;
 	private feign.Contract delegate;
@@ -38,6 +41,7 @@ public class CompensableFeignContract implements feign.Contract, InitializingBea
 	}
 
 	public void afterPropertiesSet() throws Exception {
+		// 第一次 delegate 默认为 null
 		if (this.delegate == null) {
 			this.invokeAfterPropertiesSet();
 		} // end-if (this.delegate == null)
@@ -46,6 +50,7 @@ public class CompensableFeignContract implements feign.Contract, InitializingBea
 	public void invokeAfterPropertiesSet() throws Exception {
 		feign.Contract feignContract = null;
 
+		// 找到 spring cloud 默认的 feign.Contract
 		String[] beanNameArray = this.applicationContext.getBeanNamesForType(feign.Contract.class);
 		for (int i = 0; beanNameArray != null && i < beanNameArray.length; i++) {
 			String beanName = beanNameArray[i];
@@ -59,6 +64,7 @@ public class CompensableFeignContract implements feign.Contract, InitializingBea
 			}
 		}
 
+		// 若 feignContract 为 null, 使用 springMvcContract 作为委托对象
 		if (feignContract == null) {
 			feignContract = new SpringMvcContract();
 		} // end-if (feignContract == null)
@@ -68,6 +74,7 @@ public class CompensableFeignContract implements feign.Contract, InitializingBea
 
 	public List<MethodMetadata> parseAndValidatateMetadata(Class<?> targetType) {
 		List<MethodMetadata> metas = this.delegate.parseAndValidatateMetadata(targetType);
+		// 将 metadata 的返回值从 void 修正为 Void
 		for (int i = 0; metas != null && i < metas.size(); i++) {
 			MethodMetadata meta = metas.get(i);
 			if (meta.returnType() == void.class) {

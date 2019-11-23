@@ -50,17 +50,21 @@ public class CompensableFeignHandler implements InvocationHandler {
 		if (Object.class.equals(method.getDeclaringClass())) {
 			return method.invoke(this, args);
 		} else {
+			// springCloud 注册表
 			final SpringCloudBeanRegistry beanRegistry = SpringCloudBeanRegistry.getInstance();
 			CompensableBeanFactory beanFactory = beanRegistry.getBeanFactory();
 			CompensableManager compensableManager = beanFactory.getCompensableManager();
+			// 事务拦截器
 			final TransactionInterceptor transactionInterceptor = beanFactory.getTransactionInterceptor();
 
+			// tcc 全局事务
 			CompensableTransactionImpl compensable = //
 					(CompensableTransactionImpl) compensableManager.getCompensableTransactionQuietly();
 			if (compensable == null) {
 				return this.delegate.invoke(proxy, method, args);
 			}
 
+			// tcc 全局事务上下文
 			final TransactionContext transactionContext = compensable.getTransactionContext();
 			if (transactionContext.isCompensable() == false) {
 				return this.delegate.invoke(proxy, method, args);
@@ -69,7 +73,9 @@ public class CompensableFeignHandler implements InvocationHandler {
 			final TransactionRequestImpl request = new TransactionRequestImpl();
 			final TransactionResponseImpl response = new TransactionResponseImpl();
 
+			// 分支资源 map
 			final Map<String, XAResourceArchive> participants = compensable.getParticipantArchiveMap();
+			// 用于 自定义 rule 使用
 			beanRegistry.setLoadBalancerInterceptor(new CompensableLoadBalancerInterceptor() {
 				public List<Server> beforeCompletion(List<Server> servers) {
 					final List<Server> readyServerList = new ArrayList<Server>();
@@ -150,6 +156,7 @@ public class CompensableFeignHandler implements InvocationHandler {
 						instanceId = String.format("%s:%s:%s", addr, appName, port);
 					}
 
+					// 设置一个分支事务协助者
 					RemoteCoordinator coordinator = beanRegistry.getConsumeCoordinator(instanceId);
 					request.setTargetTransactionCoordinator(coordinator);
 

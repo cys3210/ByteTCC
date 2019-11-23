@@ -61,48 +61,62 @@ public class CompensableCoordinator implements RemoteCoordinator, CompensableBea
 	}
 
 	public Transaction start(TransactionContext transactionContext, int flags) throws XAException {
+		// TCC全局事务管理器
 		CompensableManager compensableManager = this.beanFactory.getCompensableManager();
+		// 事务日志组件
 		CompensableLogger compensableLogger = this.beanFactory.getCompensableLogger();
+		// 事务仓库，就是 id - transaction 的 Map
 		TransactionRepository compensableRepository = this.beanFactory.getCompensableRepository();
+		// 事务锁
 		TransactionLock compensableLock = this.beanFactory.getCompensableLock();
 
 		if (compensableManager.getTransactionQuietly() != null) {
 			throw new XAException(XAException.XAER_PROTO);
 		}
+
+		// 若当前事务id下没有事务创建一个
 		TransactionXid globalXid = transactionContext.getXid();
 		Transaction transaction = compensableRepository.getTransaction(globalXid);
 		if (transaction == null) {
+			// 创建全局事务对象
 			transaction = new CompensableTransactionImpl((org.bytesoft.compensable.TransactionContext) transactionContext);
 			((CompensableTransactionImpl) transaction).setBeanFactory(this.beanFactory);
 
+			// 当前 id - transaction 放入 repository
 			compensableRepository.putTransaction(globalXid, transaction);
 
+			// 记录日志
 			compensableLogger.createTransaction(((CompensableTransactionImpl) transaction).getTransactionArchive());
 			logger.info("{}| compensable transaction begin!", ByteUtils.byteArrayToString(globalXid.getGlobalTransactionId()));
 		} else if (transaction.getTransactionStatus() != Status.STATUS_ACTIVE) {
 			throw new XAException(XAException.XAER_PROTO);
 		}
 
+		// 0.4版本一直为 true
 		boolean locked = compensableLock.lockTransaction(globalXid, this.endpoint);
 		if (locked == false) {
 			throw new XAException(XAException.XAER_PROTO);
 		} // end-if (locked == false)
 
+		// 当事务开始时给其加锁
 		if (((CompensableTransactionImpl) transaction).lock(true) == false) {
 			throw new XAException(XAException.XAER_PROTO);
 		} // end-if (available == false)
 
+		// 设置隔离级别
 		org.bytesoft.compensable.TransactionContext compensableContext //
 				= (org.bytesoft.compensable.TransactionContext) transaction.getTransactionContext();
 		int propagationLevel = compensableContext.getPropagationLevel();
 		compensableContext.setPropagationLevel(propagationLevel + 1);
 
+		// 当前线程绑定当前事务
 		compensableManager.associateThread(transaction);
 
 		return transaction;
 	}
 
 	public Transaction end(TransactionContext transactionContext, int flags) throws XAException {
+		// 得到全局事务和事务锁
 		CompensableManager compensableManager = this.beanFactory.getCompensableManager();
 		TransactionLock compensableLock = this.beanFactory.getCompensableLock();
 
@@ -113,6 +127,7 @@ public class CompensableCoordinator implements RemoteCoordinator, CompensableBea
 		// else if (transaction.getTransactionStatus() != Status.STATUS_ACTIVE)
 		// { throw new XAException(XAException.XAER_PROTO); }
 
+		// 全局事务与当前线程解绑(释放资源)
 		compensableManager.desociateThread();
 
 		((CompensableTransactionImpl) transaction).release();

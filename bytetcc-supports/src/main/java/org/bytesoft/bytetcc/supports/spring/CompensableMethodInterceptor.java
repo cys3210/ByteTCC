@@ -57,6 +57,7 @@ public class CompensableMethodInterceptor
 		CompensableInvocation invocation = registry.getCurrent();
 		CompensableTransaction compensable = compensableManager.getCompensableTransactionQuietly();
 
+		// 当前的方法必须在 tcc 事务中，且没有进行注册过才会进行注册
 		TransactionContext transactionContext = compensable.getTransactionContext();
 		if (invocation == null) /* non-Compensable operation in CompensableService */ {
 			return;
@@ -66,6 +67,7 @@ public class CompensableMethodInterceptor
 			return;
 		}
 
+		// 当前事务当作分支事务进行注册， 保存一些必要信息
 		compensable.registerCompensable(invocation);
 	}
 
