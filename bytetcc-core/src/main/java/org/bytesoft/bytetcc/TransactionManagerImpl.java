@@ -73,7 +73,7 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 		// aop会拦截所有标注有 compensable 注解的对象， 对于他们执行的方法都会进行拦截， 推测 invocation 主要是为了 tcc 事务的上下文
 		} else if (invocation != null) {
 			compensableManager.compensableBegin();
-
+		// 普通的事务管理
 		} else {
 			transactionManager.begin();
 		}

@@ -906,7 +906,7 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 	}
 
 	public void onCommitSuccess(TransactionXid xid) {
-		if (this.transactionContext.isCompensating()) {
+		if (this.transactionContext.isCompensating()) {	// 当前事务如果正在进行补偿（进行 commit 或者 cancel时）
 			this.onCompletionPhaseCommitSuccess(xid);
 		} else {
 			this.onInvocationPhaseCommitSuccess(xid);
@@ -914,10 +914,12 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter imple
 	}
 
 	private void onInvocationPhaseCommitSuccess(Xid xid) {
+		// 如果当前时事务的发起者
 		if (this.transactionContext.isCoordinator() && this.transactionContext.isPropagated() == false
 				&& this.transactionContext.getPropagationLevel() == 0) {
 			this.onInvocationPhaseCoordinatorCommitSuccess(xid);
 		} else {
+			// 下级事务
 			this.onInvocationPhaseParticipantCommitSuccess(xid);
 		}
 	}
