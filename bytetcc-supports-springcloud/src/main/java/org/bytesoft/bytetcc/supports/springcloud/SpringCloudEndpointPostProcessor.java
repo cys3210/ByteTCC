@@ -33,6 +33,9 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 
+/**
+ * 为了使CompensableEndpointAware生效的后处理器
+ */
 public class SpringCloudEndpointPostProcessor
 		implements InitializingBean, BeanFactoryPostProcessor, BeanPostProcessor, EnvironmentAware {
 	static final Logger logger = LoggerFactory.getLogger(SpringCloudEndpointPostProcessor.class);
@@ -87,6 +90,7 @@ public class SpringCloudEndpointPostProcessor
 
 	}
 
+	// 当前服务的ip,host,name等EndPoint信息,作为一个标识
 	private void injectEndpointIfNecessary(Object bean) {
 		if (CompensableEndpointAware.class.isInstance(bean)) {
 			CompensableEndpointAware aware = (CompensableEndpointAware) bean;

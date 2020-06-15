@@ -99,7 +99,7 @@ public class AccountServiceCancel implements IAccountService {
 ## 4. Contact Me
 If you have any questions or comments regarding this project, please feel free to contact me at:
 
-1. send mail to _[bytefox#126.com](bytefox@126.com)_
+1. send mail to _[bytefox#126.com](bytefox@126.com)<!-- @IGNORE PREVIOUS: link -->_
 ~OR~
 2. add Tecent QQ group 537445956/606453172/383515467
 

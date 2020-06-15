@@ -42,9 +42,12 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 	private CompensableBeanFactory beanFactory;
 
 	public void begin() throws NotSupportedException, SystemException {
+		// 本地事务管理组件
 		TransactionManager transactionManager = this.beanFactory.getTransactionManager();
+		// tcc事务管理组件
 		CompensableManager compensableManager = this.beanFactory.getCompensableManager();
 
+		// 获得tcc事务
 		CompensableTransaction transaction = compensableManager.getCompensableTransactionQuietly();
 		boolean markedRollbackOnly = transaction == null ? false : transaction.isMarkedRollbackOnly();
 
@@ -55,9 +58,11 @@ public class TransactionManagerImpl implements TransactionManager, CompensableBe
 		CompensableInvocationRegistry registry = CompensableInvocationRegistry.getInstance();
 		CompensableInvocation invocation = registry.getCurrent();
 
-		if (transaction != null) {
+		if (transaction != null) {	//当前事务不是根事务
+			// 开启本地事务，加入全局事务
 			compensableManager.begin();
-		} else if (invocation != null) {
+		} else if (invocation != null) {	//当前为根事务
+			// 创建全局事务，开启本地事务
 			compensableManager.compensableBegin();
 		} else {
 			transactionManager.begin();

@@ -922,15 +922,17 @@ public class CompensableTransactionImpl extends TransactionListenerAdapter
 		if (this.transactionContext.isCompensating()) {
 			this.onCompletionPhaseCommitSuccess(xid);
 		} else {
-			this.onInvocationPhaseCommitSuccess(xid);
 		}
+		this.onInvocationPhaseCommitSuccess(xid);
 	}
 
 	private void onInvocationPhaseCommitSuccess(Xid xid) {
 		if (this.transactionContext.isCoordinator() && this.transactionContext.isPropagated() == false
 				&& this.transactionContext.getPropagationLevel() == 0) {
+			// 当前为根事务
 			this.onInvocationPhaseCoordinatorCommitSuccess(xid);
 		} else {
+			// 当前为分支事务
 			this.onInvocationPhaseParticipantCommitSuccess(xid);
 		}
 	}

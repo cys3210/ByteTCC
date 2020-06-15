@@ -173,19 +173,27 @@ public class CompensableManagerImpl implements CompensableManager, CompensableBe
 
 	protected void invokeBegin(TransactionContext transactionContext, boolean createFlag)
 			throws NotSupportedException, SystemException {
+		// 本地事务分支协助者
 		TransactionParticipant transactionCoordinator = this.beanFactory.getTransactionNativeParticipant();
 
+		// 全局事务
 		CompensableTransaction compensable = this.getCompensableTransactionQuietly();
+		// 本地事务上下文
 		TransactionContext compensableContext = compensable.getTransactionContext();
 
 		TransactionXid compensableXid = compensableContext.getXid();
 		TransactionXid transactionXid = transactionContext.getXid();
 		try {
+			// XA 2PC start...end -> prepare -> commit/rollback
 			Transaction transaction = transactionCoordinator.start(transactionContext, XAResource.TMNOFLAGS);
+			// 本地事务和全局事务互相关联
 			transaction.setTransactionalExtra(compensable);
 			compensable.setTransactionalExtra(transaction);
 
+			// 主要为了及时记录日志
+			// 全局事务监听本地事务资源列表
 			transaction.registerTransactionResourceListener(compensable);
+			// 全局事务作为监听器注册监听本地事务
 			transaction.registerTransactionListener(compensable);
 
 			CompensableSynchronization synchronization = this.beanFactory.getCompensableSynchronization();
@@ -226,26 +234,35 @@ public class CompensableManagerImpl implements CompensableManager, CompensableBe
 			throw new NotSupportedException();
 		}
 
+		// tcc事务日志组件1
 		CompensableLogger compensableLogger = this.beanFactory.getCompensableLogger();
+		// tcc事务锁
 		TransactionLock compensableLock = this.beanFactory.getCompensableLock();
+		// tcc事务仓库
 		TransactionRepository compensableRepository = this.beanFactory.getCompensableRepository();
+		// 远程事务协助组件
 		RemoteCoordinator compensableCoordinator = (RemoteCoordinator) this.beanFactory.getCompensableNativeParticipant();
 
+		// 本地事务Id工厂
 		XidFactory transactionXidFactory = this.beanFactory.getTransactionXidFactory();
+		// 全局事务Id工厂
 		XidFactory compensableXidFactory = this.beanFactory.getCompensableXidFactory();
 
 		TransactionXid compensableXid = compensableXidFactory.createGlobalXid();
 		TransactionXid transactionXid = transactionXidFactory.createGlobalXid(compensableXid.getGlobalTransactionId());
 
+		// 事务上下文
 		TransactionContext compensableContext = new TransactionContext();
 		compensableContext.setCoordinator(true);
 		compensableContext.setCompensable(true);
 		compensableContext.setStatefully(this.statefully);
 		compensableContext.setXid(compensableXid);
 		compensableContext.setPropagatedBy(compensableCoordinator.getIdentifier());
+		// 创建全局事务
 		CompensableTransactionImpl compensable = new CompensableTransactionImpl(compensableContext);
 		compensable.setBeanFactory(this.beanFactory);
 
+		// 将当前事务关联线程
 		this.associateThread(compensable);
 		logger.info("{}| compensable transaction begin!", ByteUtils.byteArrayToString(compensableXid.getGlobalTransactionId()));
 
